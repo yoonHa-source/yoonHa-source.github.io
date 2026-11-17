@@ -35,6 +35,9 @@
   /* 화면 전체를 덮는 fixed 대신 보통 배치 + 작은 뷰포트 높이(svh): 사파리 주소창·아래 막대에 가려지지 않게 */
   #app { display: block; width: 100%; height: 100%; height: 100svh; border: 0; opacity: 0; transition: opacity .25s; }
   #app.on { opacity: 1; }
+  /* 입력 화면일 때 보이지 않는 빈 iframe이 위를 덮어 입력이 막히지 않게 */
+  #app[hidden] { display: none; }
+  #setup { z-index: 1; }
   #wait { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: var(--muted); opacity: .8; }
   #setup { position: fixed; inset: 0; display: none; flex-direction: column; justify-content: center; gap: 14px;
            padding: 24px max(24px, env(safe-area-inset-left)); max-width: 440px; margin: 0 auto; color: var(--ink); }
@@ -63,7 +66,7 @@
   <small>주소를 넣어 앱이 열린 다음 '홈 화면에 추가'를 하면, 그 아이콘은 주소를 기억해서 다음부터 바로 열려요.</small>
 </form>
 
-<iframe id="app" title="시율이 하루" allow="clipboard-write" hidden></iframe>
+<iframe id="app" title="시율이 하루" allow="clipboard-write" referrerpolicy="no-referrer" hidden></iframe>
 
 <script>
 (function () {
@@ -82,10 +85,11 @@
   // 주소 끝에 #다시 를 붙여 열면 저장한 주소를 지우고 다시 묻는다 (주소가 바뀌었을 때)
   if (/^#(reset|%EB%8B%A4%EC%8B%9C)$/i.test(location.hash)) { forget(); history.replaceState(null, '', location.pathname); }
 
-  // 열 때마다 이 페이지 주소 끝(#)에 앱 ID를 붙여 둔다 → 이 상태로 '홈 화면에 추가'하면 아이콘이 기억한다.
-  // # 뒤는 서버로 보내지지 않아 GitHub에도 남지 않는다. 폰 저장소가 지워져도(사설 브라우징, 저장 차단 등) 열린다
+  // 열 때마다 이 페이지 주소에 앱 ID를 붙여 둔다(?k=ID#ID) → 이 상태로 '홈 화면에 추가'하면 아이콘이 기억한다.
+  // 아이폰이 아이콘을 만들 때 # 뒤를 버리는 경우가 있어 ?k= 에도 둔다. 파일(공개)에는 들어가지 않는다
   function open(u) {
-    history.replaceState(null, '', location.pathname + '#' + OK.exec(u)[1]);
+    var id = OK.exec(u)[1];
+    history.replaceState(null, '', location.pathname + '?k=' + id + '#' + id);
     $('setup').style.display = 'none';
     $('wait').style.display = 'flex';
     var f = $('app');
@@ -114,7 +118,8 @@
     open(u);
   });
 
-  var fromHash = ID.exec(location.hash);
+  var q = /[?&]k=([A-Za-z0-9_-]{20,})(?:&|$)/.exec(location.search);
+  var fromHash = q || ID.exec(location.hash);
   var saved = fromHash ? toUrl(fromHash[1]) : load();
   if (fromHash) save(saved);
   if (saved && OK.test(saved)) open(saved);
