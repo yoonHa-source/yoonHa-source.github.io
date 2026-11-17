@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>시율이 하루</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 검색에 나오지 않게 -->
+<meta name="robots" content="noindex, nofollow">
+<!-- 홈 화면에 추가하면 사파리 주소창 없이 앱처럼 열린다 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="시율이 하루">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<!-- 홈 화면 아이콘 (180x180, 아이폰이 모서리를 둥글게 깎는다) -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<script>
+// 앱(Index.html)과 같은 기준으로 첫 바탕색을 정한다: 22시~8시는 검정, 낮은 앱 낮 화면 색
+// 앱 안의 ☾ 버튼 상태는 구글 쪽 저장소라 여기서 읽을 수 없다 → 앱이 준비되면 알려 주는 값으로 맞춘다
+(function () {
+  var h = new Date().getHours(), night = h >= 22 || h < 8;
+  var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  var bg = night ? '#000000' : dark ? '#10141C' : '#F2F4F8';
+  document.documentElement.style.background = bg;
+  document.documentElement.className = night ? 'night' : dark ? 'dark' : 'day';
+  document.write('<meta name="theme-color" content="' + bg + '">');
+})();
+</script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: inherit; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  html.day   { --ink: #1D2433; --muted: #5B6476; --line: #CBD2DE; --field: #FFFFFF; --btn: #3D5AFE; --on-btn: #FFFFFF; --bad: #C2410C; }
+  html.dark  { --ink: #E8ECF4; --muted: #98A2B3; --line: #2A3242; --field: #181E29; --btn: #8EA2F2; --on-btn: #10141C; --bad: #F59E7A; }
+  html.night { --ink: #977F63; --muted: #6B5743; --line: #261C14; --field: #110C08; --btn: #2A1A0D; --on-btn: #A16E39; --bad: #A15644; }
+  #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s; }
+  #app.on { opacity: 1; }
+  #wait { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: var(--muted); opacity: .8; }
+  #setup { position: fixed; inset: 0; display: none; flex-direction: column; justify-content: center; gap: 14px;
+           padding: 24px max(24px, env(safe-area-inset-left)); max-width: 440px; margin: 0 auto; color: var(--ink); }
+  #setup h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  #setup p { margin: 0; color: var(--muted); font-size: 15px; }
+  #setup textarea { font: 15px/1.4 ui-monospace, Menlo, monospace; color: var(--ink); background: var(--field); border: 1px solid var(--line);
+                    border-radius: 12px; padding: 12px; min-height: 92px; resize: none; word-break: break-all; }
+  #setup textarea:focus { outline: 2px solid var(--btn); outline-offset: 1px; }
+  #setup button { font: 600 17px -apple-system, system-ui, sans-serif; border: 1px solid var(--on-btn); border-radius: 14px; padding: 14px;
+                  background: var(--btn); color: var(--on-btn); }
+  html.day #setup button, html.dark #setup button { border-color: transparent; }
+  #bad { color: var(--bad); font-size: 14px; min-height: 21px; }
+  #setup small { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="wait">불러오는 중…</div>
+
+<!-- 처음 한 번: 앱 주소를 이 폰에만 저장한다. 이 파일(공개)에는 앱 주소가 들어 있지 않다 -->
+<form id="setup" autocomplete="off">
+  <h1>시율이 하루</h1>
+  <p>처음 한 번만, 이 폰에 앱 주소를 넣어 주세요.<br>주소는 이 폰 안에만 저장돼요.</p>
+  <textarea id="url" aria-label="앱 주소" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+  <div id="bad" role="alert"></div>
+  <button type="submit">저장하고 열기</button>
+  <small>홈 화면에 추가한 뒤, 홈 화면 아이콘으로 연 화면에서 넣어 주세요. 사파리와 홈 화면 앱은 저장 공간이 따로예요.</small>
+</form>
+
+<iframe id="app" title="시율이 하루" allow="clipboard-write" hidden></iframe>
+
+<script>
+(function () {
+  var KEY = 'siyul.appUrl';
+  // 구글 앱 주소 모양만 받는다 (다른 사이트 주소를 넣어도 띄우지 않게)
+  var OK = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+  var $ = function (id) { return document.getElementById(id); };
+  var mem = null;   // 저장이 막힌 경우에도 이번 화면에서는 열리게
+
+  function load() { try { return localStorage.getItem(KEY); } catch (e) { return mem; } }
+  function save(u) { mem = u; try { localStorage.setItem(KEY, u); } catch (e) { /* 이번만 열림 */ } }
+  function forget() { mem = null; try { localStorage.removeItem(KEY); } catch (e) { /* 무시 */ } }
+
+  // 주소 끝에 #다시 를 붙여 열면 저장한 주소를 지우고 다시 묻는다 (주소가 바뀌었을 때)
+  if (/^#(reset|%EB%8B%A4%EC%8B%9C)$/i.test(location.hash)) { forget(); history.replaceState(null, '', location.pathname); }
+
+  function open(u) {
+    $('setup').style.display = 'none';
+    $('wait').style.display = 'flex';
+    var f = $('app');
+    f.hidden = false;
+    f.src = u;
+    setTimeout(show, 8000);   // 신호가 안 와도 8초 뒤에는 보여 준다
+  }
+  function show() { $('app').classList.add('on'); $('wait').style.display = 'none'; }
+
+  // 앱이 "다 그렸어요" 신호를 보낼 때까지 구글 쪽 흰 화면을 가려 둔다
+  addEventListener('message', function (e) {
+    var host = '';
+    try { host = new URL(e.origin).hostname; } catch (err) { return; }
+    if (!/\.googleusercontent\.com$/.test(host)) return;
+    var d = e.data;
+    if (!d || d.siyul !== 'ready') return;
+    if (typeof d.bg === 'string' && /^#[0-9A-Fa-f]{6}$/.test(d.bg)) document.documentElement.style.background = d.bg;
+    show();
+  });
+
+  $('setup').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var u = $('url').value.replace(/\s+/g, '');
+    if (!OK.test(u)) { $('bad').textContent = '앱 주소가 아니에요. script.google.com/macros/s/… /exec 주소를 통째로 넣어 주세요.'; return; }
+    save(u);
+    open(u);
+  });
+
+  var saved = load();
+  if (saved && OK.test(saved)) open(saved);
+  else $('setup').style.display = 'flex';
+})();
+</script>
+</body>
+</html>
