@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>시율이 하루</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- 검색에 나오지 않게 -->
 <meta name="robots" content="noindex, nofollow">
 <!-- 홈 화면에 추가하면 사파리 주소창 없이 앱처럼 열린다 -->
@@ -32,7 +32,8 @@
   html.day   { --ink: #1D2433; --muted: #5B6476; --line: #CBD2DE; --field: #FFFFFF; --btn: #3D5AFE; --on-btn: #FFFFFF; --bad: #C2410C; }
   html.dark  { --ink: #E8ECF4; --muted: #98A2B3; --line: #2A3242; --field: #181E29; --btn: #8EA2F2; --on-btn: #10141C; --bad: #F59E7A; }
   html.night { --ink: #977F63; --muted: #6B5743; --line: #261C14; --field: #110C08; --btn: #2A1A0D; --on-btn: #A16E39; --bad: #A15644; }
-  #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s; }
+  /* 화면 전체를 덮는 fixed 대신 보통 배치 + 작은 뷰포트 높이(svh): 사파리 주소창·아래 막대에 가려지지 않게 */
+  #app { display: block; width: 100%; height: 100%; height: 100svh; border: 0; opacity: 0; transition: opacity .25s; }
   #app.on { opacity: 1; }
   #wait { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: var(--muted); opacity: .8; }
   #setup { position: fixed; inset: 0; display: none; flex-direction: column; justify-content: center; gap: 14px;
@@ -55,11 +56,11 @@
 <!-- 처음 한 번: 앱 주소를 이 폰에만 저장한다. 이 파일(공개)에는 앱 주소가 들어 있지 않다 -->
 <form id="setup" autocomplete="off">
   <h1>시율이 하루</h1>
-  <p>처음 한 번만, 이 폰에 앱 주소를 넣어 주세요.<br>주소는 이 폰 안에만 저장돼요.</p>
+  <p>처음 한 번만, 앱 주소를 넣어 주세요.<br>주소는 이 폰 안에만 남아요.</p>
   <textarea id="url" aria-label="앱 주소" placeholder="https://script.google.com/macros/s/…/exec" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
   <div id="bad" role="alert"></div>
   <button type="submit">저장하고 열기</button>
-  <small>홈 화면에 추가한 뒤, 홈 화면 아이콘으로 연 화면에서 넣어 주세요. 사파리와 홈 화면 앱은 저장 공간이 따로예요.</small>
+  <small>주소를 넣어 앱이 열린 다음 '홈 화면에 추가'를 하면, 그 아이콘은 주소를 기억해서 다음부터 바로 열려요.</small>
 </form>
 
 <iframe id="app" title="시율이 하루" allow="clipboard-write" hidden></iframe>
@@ -68,7 +69,9 @@
 (function () {
   var KEY = 'siyul.appUrl';
   // 구글 앱 주소 모양만 받는다 (다른 사이트 주소를 넣어도 띄우지 않게)
-  var OK = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+  var OK = /^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]{20,})\/exec$/;
+  var ID = /^#([A-Za-z0-9_-]{20,})$/;
+  var toUrl = function (id) { return 'https://script.google.com/macros/s/' + id + '/exec'; };
   var $ = function (id) { return document.getElementById(id); };
   var mem = null;   // 저장이 막힌 경우에도 이번 화면에서는 열리게
 
@@ -79,7 +82,10 @@
   // 주소 끝에 #다시 를 붙여 열면 저장한 주소를 지우고 다시 묻는다 (주소가 바뀌었을 때)
   if (/^#(reset|%EB%8B%A4%EC%8B%9C)$/i.test(location.hash)) { forget(); history.replaceState(null, '', location.pathname); }
 
+  // 열 때마다 이 페이지 주소 끝(#)에 앱 ID를 붙여 둔다 → 이 상태로 '홈 화면에 추가'하면 아이콘이 기억한다.
+  // # 뒤는 서버로 보내지지 않아 GitHub에도 남지 않는다. 폰 저장소가 지워져도(사설 브라우징, 저장 차단 등) 열린다
   function open(u) {
+    history.replaceState(null, '', location.pathname + '#' + OK.exec(u)[1]);
     $('setup').style.display = 'none';
     $('wait').style.display = 'flex';
     var f = $('app');
@@ -108,7 +114,9 @@
     open(u);
   });
 
-  var saved = load();
+  var fromHash = ID.exec(location.hash);
+  var saved = fromHash ? toUrl(fromHash[1]) : load();
+  if (fromHash) save(saved);
   if (saved && OK.test(saved)) open(saved);
   else $('setup').style.display = 'flex';
 })();
