@@ -36,8 +36,11 @@
   /* 화면 전체를 덮는 fixed 대신 보통 배치 + 작은 뷰포트 높이(svh): 사파리 주소창·아래 막대에 가려지지 않게 */
   /* 홈 화면 앱에선 위 시계·배터리 줄과 아래 홈 막대가 화면을 덮으므로 그 높이(safe-area)만큼 비우고 그 사이에만 앱을 둔다 */
   #app { display: block; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s;
-         margin-top: env(safe-area-inset-top, 0px);
-         height: calc(100svh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+         margin-top: var(--top);
+         height: calc(100svh - var(--top) - env(safe-area-inset-bottom, 0px)); }
+  /* 아이폰(iOS 26)은 시계 줄 바로 아래를 흐리게 덮는다 → 홈 화면 앱일 때만 12px 더 내려 제목이 흐려지지 않게 */
+  :root { --top: env(safe-area-inset-top, 0px); }
+  @media (display-mode: standalone) { :root { --top: calc(env(safe-area-inset-top, 0px) + 12px); } }
   #app.on { opacity: 1; }
   /* 입력 화면일 때 보이지 않는 빈 iframe이 위를 덮어 입력이 막히지 않게 */
   #app[hidden] { display: none; }
