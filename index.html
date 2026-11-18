@@ -23,7 +23,9 @@
   var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
   var bg = night ? '#000000' : dark ? '#10141C' : '#F2F4F8';
   document.documentElement.style.background = bg;
-  document.documentElement.className = night ? 'night' : dark ? 'dark' : 'day';
+  // 홈 화면 앱으로 열렸는지: 아이폰은 navigator.standalone, 그 밖은 display-mode
+  var app = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  document.documentElement.className = (night ? 'night' : dark ? 'dark' : 'day') + (app ? ' app' : '');
   document.write('<meta name="theme-color" content="' + bg + '">');
 })();
 </script>
@@ -38,9 +40,9 @@
   #app { display: block; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s;
          margin-top: var(--top);
          height: calc(100svh - var(--top) - env(safe-area-inset-bottom, 0px)); }
-  /* 아이폰(iOS 26)은 시계 줄 바로 아래를 흐리게 덮는다 → 홈 화면 앱일 때만 12px 더 내려 제목이 흐려지지 않게 */
+  /* 아이폰(iOS 26)은 시계 줄 아래 일정 높이를 흐리게 덮는다 → 홈 화면 앱일 때만 20px 더 내려, 맨 위에 있을 때 제목이 흐림 띠 밖에 오게 */
   :root { --top: env(safe-area-inset-top, 0px); }
-  @media (display-mode: standalone) { :root { --top: calc(env(safe-area-inset-top, 0px) + 12px); } }
+  html.app { --top: calc(env(safe-area-inset-top, 0px) + 20px); }
   #app.on { opacity: 1; }
   /* 입력 화면일 때 보이지 않는 빈 iframe이 위를 덮어 입력이 막히지 않게 */
   #app[hidden] { display: none; }
