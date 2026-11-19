@@ -34,7 +34,7 @@
   body { background: inherit; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
   html.day   { --ink: #1D2433; --muted: #5B6476; --line: #CBD2DE; --field: #FFFFFF; --btn: #3D5AFE; --on-btn: #FFFFFF; --bad: #C2410C; }
   html.dark  { --ink: #E8ECF4; --muted: #98A2B3; --line: #2A3242; --field: #181E29; --btn: #8EA2F2; --on-btn: #10141C; --bad: #F59E7A; }
-  html.night { --ink: #977F63; --muted: #6B5743; --line: #261C14; --field: #110C08; --btn: #2A1A0D; --on-btn: #A16E39; --bad: #A15644; }
+  html.night { --ink: #BCA383; --muted: #8F755A; --line: #261C14; --field: #110C08; --btn: #2A1A0D; --on-btn: #C9823F; --bad: #A15644; }
   /* 화면 전체를 덮는 fixed 대신 보통 배치 + 작은 뷰포트 높이(svh): 사파리 주소창·아래 막대에 가려지지 않게 */
   /* 홈 화면 앱에선 위 시계·배터리 줄과 아래 홈 막대가 화면을 덮으므로 그 높이(safe-area)만큼 비우고 그 사이에만 앱을 둔다 */
   #app { display: block; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .25s;
@@ -47,12 +47,19 @@
   /* 입력 화면일 때 보이지 않는 빈 iframe이 위를 덮어 입력이 막히지 않게 */
   #app[hidden] { display: none; }
   #setup { z-index: 1; }
-  #wait { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: var(--muted); opacity: .8; }
+  #wait { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+          color: var(--muted); text-align: center; padding: 24px; }
+  /* 지난번 앱이 알려 준 마지막 수유 (앱이 뜨기 전 2~3초 동안 바로 보이게) */
+  #snap { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink); margin-bottom: 18px; }
+  #snap small { font-size: 14px; color: var(--muted); }
+  #snapBig { font-size: 40px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  #snapMeta, #snapSleep { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #waitMsg { font-size: 14px; opacity: .8; }
   #setup { position: fixed; inset: 0; display: none; flex-direction: column; justify-content: center; gap: 14px;
            padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-bottom)); max-width: 440px; margin: 0 auto; color: var(--ink); }
   #setup h1 { margin: 0; font-size: 24px; font-weight: 600; }
   #setup p { margin: 0; color: var(--muted); font-size: 15px; }
-  #setup textarea { font: 15px/1.4 ui-monospace, Menlo, monospace; color: var(--ink); background: var(--field); border: 1px solid var(--line);
+  #setup textarea { font: 16px/1.4 ui-monospace, Menlo, monospace; color: var(--ink); background: var(--field); border: 1px solid var(--line);
                     border-radius: 12px; padding: 12px; min-height: 92px; resize: none; word-break: break-all; }
   #setup textarea:focus { outline: 2px solid var(--btn); outline-offset: 1px; }
   #setup button { font: 600 17px -apple-system, system-ui, sans-serif; border: 1px solid var(--on-btn); border-radius: 14px; padding: 14px;
@@ -63,7 +70,15 @@
 </style>
 </head>
 <body>
-<div id="wait">불러오는 중…</div>
+<div id="wait">
+  <div id="snap" hidden>
+    <small>마지막 수유</small>
+    <div id="snapBig"></div>
+    <div id="snapMeta"></div>
+    <div id="snapSleep" hidden></div>
+  </div>
+  <div id="waitMsg">불러오는 중…</div>
+</div>
 
 <!-- 처음 한 번: 앱 주소를 이 폰에만 저장한다. 이 파일(공개)에는 앱 주소가 들어 있지 않다 -->
 <form id="setup" autocomplete="off">
@@ -86,10 +101,38 @@
   var toUrl = function (id) { return 'https://script.google.com/macros/s/' + id + '/exec'; };
   var $ = function (id) { return document.getElementById(id); };
   var mem = null;   // 저장이 막힌 경우에도 이번 화면에서는 열리게
+  var SNAP = 'siyul.snap';   // 마지막 수유·수면 시각 (이 폰에만 저장, 이 파일에는 없음)
 
   function load() { try { return localStorage.getItem(KEY); } catch (e) { return mem; } }
   function save(u) { mem = u; try { localStorage.setItem(KEY, u); } catch (e) { /* 이번만 열림 */ } }
-  function forget() { mem = null; try { localStorage.removeItem(KEY); } catch (e) { /* 무시 */ } }
+  function forget() { mem = null; try { localStorage.removeItem(KEY); localStorage.removeItem(SNAP); } catch (e) { /* 무시 */ } }
+
+  // ---- 지난번 요약: 앱이 뜨기 전에 바로 보여 준다. 경과 시간은 지금 시각으로 다시 계산 ----
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var hm = function (t) { var d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  var dur = function (ms) { var m = Math.max(0, Math.floor(ms / 60000)), h = Math.floor(m / 60); return h ? h + '시간 ' + (m % 60) + '분' : m + '분'; };
+  var num = function (x) { return typeof x === 'number' && isFinite(x) && x >= 0; };
+  // 앱이 보낸 값 검사: 모양이 다르면 버린다
+  function cleanSnap(s) {
+    if (!s || typeof s !== 'object' || !num(s.iv) || !num(s.sleep)) return null;
+    var f = s.feed;
+    if (f !== null && (!f || !num(f.at) || !num(f.ml) || typeof f.breast !== 'boolean')) return null;
+    return { feed: f ? { at: f.at, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0 };
+  }
+  function drawSnap() {
+    var s = null;
+    try { s = cleanSnap(JSON.parse(localStorage.getItem(SNAP))); } catch (e) { s = null; }
+    if (!s || !s.feed) return;
+    var now = Date.now(), at = s.feed.at, iv = s.iv * 60000;
+    $('snapBig').textContent = dur(now - at) + ' 전';
+    $('snapMeta').textContent = hm(at) + ' ' + (s.feed.ml ? s.feed.ml + 'ml' : s.feed.breast ? '모유' : '') +
+      (iv ? ' · ' + (now - at > iv ? '예상 시각 ' + hm(at + iv) + ' 지남' : '다음 예상 ' + hm(at + iv)) : '');
+    $('snapSleep').hidden = !s.sleep;
+    if (s.sleep) $('snapSleep').textContent = hm(s.sleep) + '부터 ' + dur(now - s.sleep) + '째 자는 중';
+    $('snap').hidden = false;
+    // 이 폰에서 마지막으로 받은 시각. 그 뒤 다른 폰에서 남긴 기록은 앱이 뜨면 맞춰진다
+    if (s.t) $('waitMsg').textContent = hm(s.t) + '까지 받은 기록 · 새 기록 불러오는 중…';
+  }
 
   // 주소 끝에 #다시 를 붙여 열면 저장한 주소를 지우고 다시 묻는다 (주소가 바뀌었을 때)
   if (/^#(reset|%EB%8B%A4%EC%8B%9C)$/i.test(location.hash)) { forget(); history.replaceState(null, '', location.pathname); }
@@ -100,6 +143,7 @@
     var id = OK.exec(u)[1];
     history.replaceState(null, '', location.pathname + '?k=' + id + '#' + id);
     $('setup').style.display = 'none';
+    drawSnap();
     $('wait').style.display = 'flex';
     var f = $('app');
     f.hidden = false;
@@ -114,6 +158,12 @@
     try { host = new URL(e.origin).hostname; } catch (err) { return; }
     if (!/\.googleusercontent\.com$/.test(host)) return;
     var d = e.data;
+    if (d && d.siyul === 'snap') {
+      var s = cleanSnap(d.snap);
+      if (s) s.t = Date.now();
+      if (s) try { localStorage.setItem(SNAP, JSON.stringify(s)); } catch (err) { /* 저장 못 하면 다음에 요약 없이 열림 */ }
+      return;
+    }
     if (!d || d.siyul !== 'ready') return;
     if (typeof d.bg === 'string' && /^#[0-9A-Fa-f]{6}$/.test(d.bg)) document.documentElement.style.background = d.bg;
     show();
