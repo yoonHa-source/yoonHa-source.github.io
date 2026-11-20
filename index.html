@@ -49,25 +49,16 @@
   #setup { z-index: 1; }
   #wait { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
           color: var(--muted); text-align: center; padding: 24px; }
-  /* 지난번 앱이 알려 준 마지막 수유 (앱이 뜨기 전 2~3초 동안 바로 보이게).
-     앱의 '마지막 수유' 카드와 같은 자리·같은 모양으로 그려서, 앱이 뜰 때 글씨가 움직이지 않게 한다.
-     화면 높이 기준 가운데 정렬은 아이폰이 막 켤 때 높이를 늦게 정해 자리가 튀므로 쓰지 않고, 위에서부터 고정 */
-  html.day   { --card: #FFFFFF; --bar: #E1E6EF; --accent: #2F5BD3; --warn: #C2362F; --big: var(--ink); }
-  html.dark  { --card: #181E29; --bar: #2A3242; --accent: #8CA6F7; --warn: #F2877F; --big: var(--ink); }
-  html.night { --card: #110C08; --bar: #261C14; --accent: #C9823F; --warn: #D2664F; --big: #C9823F; }
-  #wait.snap { justify-content: flex-start; padding: calc(var(--top) + 93px) 0 0; gap: 14px; }
-  #snap { box-sizing: border-box; width: min(480px, calc(100% - 48px)); background: var(--card); border-radius: 18px; padding: 18px;
-          display: flex; flex-direction: column; gap: 10px; text-align: left; color: var(--ink); font-size: 15px; }
-  #snap small { font-size: 13px; color: var(--muted); letter-spacing: .02em; }
-  #snapBig { font-size: 40px; line-height: 1.1; color: var(--big); font-variant-numeric: tabular-nums; }
-  #snapBar { height: 8px; background: var(--bar); border-radius: 99px; overflow: hidden; }
-  #snapBar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
-  #snap.late #snapBar i { background: var(--warn); }
-  #snap.late #snapNext { color: var(--warn); }
-  #snapMeta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
-  #snapMeta b { color: var(--ink); font-weight: 600; }
-  #snapSleep { color: var(--muted); font-size: 14px; }
-  #waitMsg { font-size: 13px; opacity: .8; }
+  /* 지난번 앱이 알려 준 마지막 수유 (앱이 뜨기 전 2~3초 동안 바로 보이게). 화면 한가운데에 인사처럼.
+     아이폰은 홈 화면 앱이 막 켜질 때 화면 높이를 늦게 정해서, inset:0 으로 가운데를 잡으면 아래에 있다가 움직인다
+     → 켜는 동안 바뀌지 않는 '화면 전체 높이'(lvh)로 높이를 고정해 가운데 */
+  #wait.snap { bottom: auto; height: 100lvh; }
+  #snapHi { font-size: 17px; color: var(--ink); margin-bottom: 14px; letter-spacing: .02em; }
+  #snap { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink); margin-bottom: 18px; }
+  #snap small { font-size: 14px; color: var(--muted); }
+  #snapBig { font-size: 40px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  #snapMeta, #snapSleep { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #waitMsg { font-size: 14px; opacity: .8; }
   #setup { position: fixed; inset: 0; display: none; flex-direction: column; justify-content: center; gap: 14px;
            padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-left)) max(24px, env(safe-area-inset-bottom)); max-width: 440px; margin: 0 auto; color: var(--ink); }
   #setup h1 { margin: 0; font-size: 24px; font-weight: 600; }
@@ -84,11 +75,11 @@
 </head>
 <body>
 <div id="wait">
+  <div id="snapHi" hidden></div>
   <div id="snap" hidden>
     <small>마지막 수유</small>
     <div id="snapBig"></div>
-    <div id="snapBar"><i></i></div>
-    <div id="snapMeta"><span id="snapLast"></span><span id="snapNext"></span></div>
+    <div id="snapMeta"></div>
     <div id="snapSleep" hidden></div>
   </div>
   <div id="waitMsg">불러오는 중…</div>
@@ -131,21 +122,22 @@
     if (!s || typeof s !== 'object' || !num(s.iv) || !num(s.sleep)) return null;
     var f = s.feed;
     if (f !== null && (!f || !num(f.at) || !num(f.ml) || typeof f.breast !== 'boolean')) return null;
-    return { feed: f ? { at: f.at, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0 };
+    return { feed: f ? { at: f.at, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0,
+             birth: typeof s.birth === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.birth) ? s.birth : '' };
   }
   function drawSnap() {
     var s = null;
     try { s = cleanSnap(JSON.parse(localStorage.getItem(SNAP))); } catch (e) { s = null; }
     if (!s || !s.feed) return;
     var now = Date.now(), at = s.feed.at, iv = s.iv * 60000;
-    var late = iv && now - at > iv;
     $('snapBig').textContent = dur(now - at) + ' 전';
-    $('snapBar').firstChild.style.width = (iv ? Math.min(100, (now - at) / iv * 100) : 0) + '%';
-    var b = document.createElement('b');
-    b.textContent = s.feed.ml ? s.feed.ml + 'ml' : s.feed.breast ? '모유' : '';
-    $('snapLast').replaceChildren(hm(at) + ' ', b);
-    $('snapNext').textContent = iv ? (late ? '예상 시각 ' + hm(at + iv) + ' 지남' : '다음 예상 ' + hm(at + iv)) : '';
-    $('snap').classList.toggle('late', !!late);
+    $('snapMeta').textContent = hm(at) + ' ' + (s.feed.ml ? s.feed.ml + 'ml' : s.feed.breast ? '모유' : '') +
+      (iv ? ' · ' + (now - at > iv ? '예상 시각 ' + hm(at + iv) + ' 지남' : '다음 예상 ' + hm(at + iv)) : '');
+    // 생일이 있으면 '시율이 N일째' (태어난 날 = 1일, 앱 머리글과 같은 계산)
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.birth), t = new Date();
+    var n = m ? Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(+m[1], m[2] - 1, +m[3])) / 86400000) + 1 : 0;
+    $('snapHi').textContent = n > 0 ? '시율이 ' + n + '일째' : '';
+    $('snapHi').hidden = !(n > 0);
     $('wait').classList.add('snap');
     $('snapSleep').hidden = !s.sleep;
     if (s.sleep) $('snapSleep').textContent = hm(s.sleep) + '부터 ' + dur(now - s.sleep) + '째 자는 중';
