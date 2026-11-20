@@ -109,11 +109,12 @@
   var toUrl = function (id) { return 'https://script.google.com/macros/s/' + id + '/exec'; };
   var $ = function (id) { return document.getElementById(id); };
   var mem = null;   // 저장이 막힌 경우에도 이번 화면에서는 열리게
-  var SNAP = 'siyul.snap';   // 마지막 수유·수면 시각 (이 폰에만 저장, 이 파일에는 없음)
+  var SNAP = 'siyul.snap';
+  var FB = 'siyul.fb';         // 빠른 저장소(Firebase) 주소·키. 앱이 알려 준다 (이 파일에는 없음)   // 마지막 수유·수면 시각 (이 폰에만 저장, 이 파일에는 없음)
 
   function load() { try { return localStorage.getItem(KEY); } catch (e) { return mem; } }
   function save(u) { mem = u; try { localStorage.setItem(KEY, u); } catch (e) { /* 이번만 열림 */ } }
-  function forget() { mem = null; try { localStorage.removeItem(KEY); localStorage.removeItem(SNAP); } catch (e) { /* 무시 */ } }
+  function forget() { mem = null; try { localStorage.removeItem(KEY); localStorage.removeItem(SNAP); localStorage.removeItem(FB); } catch (e) { /* 무시 */ } }
 
   // ---- 지난번 요약: 앱이 뜨기 전에 바로 보여 준다. 경과 시간은 지금 시각으로 다시 계산 ----
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -184,20 +185,43 @@
     });
     return cleanSnap({ feed: g, sleep: d.sleep ? sleep : 0, iv: Number(d.interval) || 180, t: Date.now(), birth: d.birth || '' });
   }
+  // 빠른 저장소 주소·키 검사 (앱이 보낸 값만, 모양이 다르면 버린다)
+  function cleanFb(f) {
+    if (!f || typeof f.url !== 'string' || typeof f.key !== 'string') return null;
+    if (!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.firebasedatabase\.app$|^https:\/\/[a-z0-9-]+\.firebaseio\.com$/.test(f.url)) return null;
+    if (!/^[A-Za-z0-9_-]{32,64}$/.test(f.key)) return null;
+    return { url: f.url, key: f.key };
+  }
+  function useFresh(s) {
+    try { localStorage.setItem(SNAP, JSON.stringify(s)); } catch (e) { /* 이번 화면에만 */ }
+    if ($('wait').style.display !== 'flex') return;   // 이미 앱이 떴으면 그대로
+    drawSnap(s, true);
+    placeSnap();
+  }
+  function timed(ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    if (ctl) setTimeout(function () { ctl.abort(); }, ms);
+    return ctl ? ctl.signal : undefined;
+  }
+  // 1) 빠른 저장소에서 먼저 (보통 0.5초 안팎). 비었거나 실패하면 2) 구글에서
   function freshSnap(u) {
     if (!window.fetch) return;
-    var ctl = window.AbortController ? new AbortController() : null;
-    if (ctl) setTimeout(function () { ctl.abort(); }, 8000);
-    fetch(u + '?snap=1', { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+    var fb = null;
+    try { fb = cleanFb(JSON.parse(localStorage.getItem(FB))); } catch (e) { fb = null; }
+    if (!fb) { googleSnap(u); return; }
+    fetch(fb.url + '/snap/' + fb.key + '.json', { cache: 'no-store', signal: timed(3000) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        var s = snapFromRows(d);
-        if (!s) return;
-        try { localStorage.setItem(SNAP, JSON.stringify(s)); } catch (e) { /* 이번 화면에만 */ }
-        if ($('wait').style.display !== 'flex') return;   // 이미 앱이 떴으면 그대로
-        drawSnap(s, true);
-        placeSnap();
+        var s = d && cleanSnap({ feed: d.feed || null, sleep: d.sleep || 0, iv: d.iv, t: Date.now(), birth: d.birth || '' });
+        if (s && s.feed) useFresh(s); else googleSnap(u);
       })
+      .catch(function () { googleSnap(u); });
+  }
+  function googleSnap(u) {
+    if (!window.fetch) return;
+    fetch(u + '?snap=1', { cache: 'no-store', signal: timed(8000) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { var s = snapFromRows(d); if (s) useFresh(s); })
       .catch(function () { /* 못 받으면 저장해 둔 값 그대로 (앱이 뜨면 맞춰짐) */ });
   }
 
@@ -244,7 +268,8 @@
     if (!/\.googleusercontent\.com$/.test(host)) return;
     var d = e.data;
     if (d && d.siyul === 'snap') {
-      var s = cleanSnap(d.snap);
+      var s = cleanSnap(d.snap), fb = cleanFb(d.fb);
+      if (fb) try { localStorage.setItem(FB, JSON.stringify(fb)); } catch (err) { /* 다음에 구글에서 받음 */ }
       if (s) s.t = Date.now();
       if (s) try { localStorage.setItem(SNAP, JSON.stringify(s)); } catch (err) { /* 저장 못 하면 다음에 요약 없이 열림 */ }
       return;
