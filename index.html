@@ -56,6 +56,8 @@
   /* 저장해 둔 값이 오래됐으면 최신 기록을 받을 때까지 숫자를 흐리게 */
   #wait #snap, #wait #snapHi { transition: opacity .2s; }
   #wait.stale #snap, #wait.stale #snapHi { opacity: .35; }
+  #wait.pending #snap { visibility: hidden; }
+  #wait [hidden] { display: none !important; }   /* #snap 의 display:flex 가 hidden 을 이기지 않게 */   /* 최신 값을 받기 전엔 예전 숫자를 감춘다 (자리는 그대로) */
   #snapHi { font-size: 17px; color: var(--ink); margin-bottom: 14px; letter-spacing: .02em; }
   #snap { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink); margin-bottom: 18px; }
   #snap small { font-size: 14px; color: var(--muted); }
@@ -132,11 +134,31 @@
     return { feed: f ? { at: f.at, start: st, end: en, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0,
              birth: typeof s.birth === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.birth) ? s.birth : '' };
   }
+  var freshDone = false;
+  function isOld(s) { return !s.t || Date.now() - s.t > 2 * 60000; }
+  // 저장값이 오래됐으면(확인만 하는 폰) 예전 숫자는 보이지 않게 자리만 잡아 두고 최신 값을 기다린다.
+  // 자리를 그대로 두는 건 숫자가 나타날 때 '시율이 N일째'가 움직이지 않게 하려는 것
+  function waitFresh(s) {
+    drawSnap(s, false);
+    $('wait').classList.remove('stale');
+    $('wait').classList.add('pending');
+    $('waitMsg').textContent = '최신 기록 확인 중…';
+    // 2초 안에 못 받으면(통신이 약할 때) 예전 숫자는 끝까지 보여 주지 않고 안내만. 늦게라도 받으면 그때 숫자가 나온다
+    setTimeout(function () {
+      if (freshDone || $('wait').style.display !== 'flex') return;
+      $('snap').hidden = true;   // 비워 둔 숫자 자리를 접고 안내만
+      $('wait').classList.remove('pending');
+      $('waitMsg').textContent = '최신 기록을 못 받았어요 · 연결을 확인해 주세요';
+      placeSnap();
+    }, 2000);
+  }
   function storedSnap() { try { return cleanSnap(JSON.parse(localStorage.getItem(SNAP))); } catch (e) { return null; } }
   // fresh = 방금 구글에서 받은 값. 아니면 폰에 저장해 둔 값이라, 오래됐으면 흐리게 하고 '확인 중'
   function drawSnap(s, fresh) {
     if (!s || !s.feed) return;
-    var old = !fresh && (!s.t || Date.now() - s.t > 2 * 60000);
+    var old = !fresh && isOld(s);
+    if (fresh) freshDone = true;
+    $('wait').classList.remove('pending');
     $('wait').classList.toggle('stale', old);
     var now = Date.now(), at = s.feed.at, iv = s.iv * 60000;
     $('snapBig').textContent = dur(now - at) + ' 전';
@@ -234,7 +256,8 @@
     var id = OK.exec(u)[1];
     history.replaceState(null, '', location.pathname + '?k=' + id + '#' + id);
     $('setup').style.display = 'none';
-    drawSnap(storedSnap(), false);
+    var s = storedSnap();
+    if (s && s.feed && isOld(s)) waitFresh(s); else drawSnap(s, false);
     $('wait').style.display = 'flex';
     placeSnap();
     freshSnap(u);
