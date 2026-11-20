@@ -50,9 +50,9 @@
   #wait { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
           color: var(--muted); text-align: center; padding: 24px; }
   /* 지난번 앱이 알려 준 마지막 수유 (앱이 뜨기 전 2~3초 동안 바로 보이게). 화면 한가운데에 인사처럼.
-     아이폰은 홈 화면 앱이 막 켜질 때 화면 높이를 늦게 정해서, inset:0 으로 가운데를 잡으면 아래에 있다가 움직인다
-     → 켜는 동안 바뀌지 않는 '화면 전체 높이'(lvh)로 높이를 고정해 가운데 */
-  #wait.snap { bottom: auto; height: 100lvh; }
+     아이폰 홈 화면 앱은 막 켜질 때 화면 높이(100%·lvh 모두)를 실제와 다르게 알려 줘서 CSS 가운데 정렬이 아래로 쏠린다
+     → 위에서부터 놓고, 위 여백은 아래 placeSnap() 이 기기 화면 높이(screen.height)로 계산한다 */
+  #wait.snap { justify-content: flex-start; padding-top: 0; }
   #snapHi { font-size: 17px; color: var(--ink); margin-bottom: 14px; letter-spacing: .02em; }
   #snap { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink); margin-bottom: 18px; }
   #snap small { font-size: 14px; color: var(--muted); }
@@ -122,7 +122,10 @@
     if (!s || typeof s !== 'object' || !num(s.iv) || !num(s.sleep)) return null;
     var f = s.feed;
     if (f !== null && (!f || !num(f.at) || !num(f.ml) || typeof f.breast !== 'boolean')) return null;
-    return { feed: f ? { at: f.at, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0,
+    // start = 이번 수유를 시작한 시각(30분 안 추가 수유를 묶은 것), end = 다 먹은 시각(다음 예상 기준). 예전 앱이 보낸 값엔 없어서 at 으로 대신
+    var st = f && num(f.start) && f.start <= f.at ? f.start : f ? f.at : 0;
+    var en = f && num(f.end) && f.end >= f.at ? f.end : f ? f.at : 0;
+    return { feed: f ? { at: f.at, start: st, end: en, ml: f.ml, breast: f.breast } : null, sleep: s.sleep, iv: s.iv, t: num(s.t) ? s.t : 0,
              birth: typeof s.birth === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.birth) ? s.birth : '' };
   }
   function drawSnap() {
@@ -131,8 +134,9 @@
     if (!s || !s.feed) return;
     var now = Date.now(), at = s.feed.at, iv = s.iv * 60000;
     $('snapBig').textContent = dur(now - at) + ' 전';
-    $('snapMeta').textContent = hm(at) + ' ' + (s.feed.ml ? s.feed.ml + 'ml' : s.feed.breast ? '모유' : '') +
-      (iv ? ' · ' + (now - at > iv ? '예상 시각 ' + hm(at + iv) + ' 지남' : '다음 예상 ' + hm(at + iv)) : '');
+    var st = s.feed.start, en = s.feed.end, what = [s.feed.ml ? s.feed.ml + 'ml' : '', s.feed.breast ? '모유' : ''].filter(Boolean).join('+');
+    $('snapMeta').textContent = (st < at ? hm(st) + '~' + hm(at) : hm(at)) + ' ' + what +
+      (iv ? ' · ' + (now - en > iv ? '예상 시각 ' + hm(en + iv) + ' 지남' : '다음 예상 ' + hm(en + iv)) : '');
     // 생일이 있으면 '시율이 N일째' (태어난 날 = 1일, 앱 머리글과 같은 계산)
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.birth), t = new Date();
     var n = m ? Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(+m[1], m[2] - 1, +m[3])) / 86400000) + 1 : 0;
@@ -157,10 +161,24 @@
     $('setup').style.display = 'none';
     drawSnap();
     $('wait').style.display = 'flex';
+    placeSnap();
     var f = $('app');
     f.hidden = false;
     f.src = u;
     setTimeout(show, 8000);   // 신호가 안 와도 8초 뒤에는 보여 준다
+  }
+  // 요약 덩어리의 가운데가 화면 위에서 28%(위쪽 1/3쯤, 폰을 들면 바로 눈이 가는 자리)에 오게 위 여백을 정한다.
+  // 홈 화면 앱이면 화면 = 기기 화면 전체라 screen.height 가 켜는 순간에도 정확하다. 사파리로 열면 보이는 높이
+  function placeSnap() {
+    var w = $('wait');
+    if (!w.classList.contains('snap')) return;
+    var standalone = document.documentElement.classList.contains('app');
+    var H = standalone ? screen.height : window.innerHeight;
+    var kids = [$('snapHi'), $('snap'), $('waitMsg')].filter(function (e) { return !e.hidden; });
+    var top = kids[0].getBoundingClientRect().top - w.getBoundingClientRect().top;
+    var bottom = kids[kids.length - 1].getBoundingClientRect().bottom - w.getBoundingClientRect().top;
+    var h = bottom - top;
+    w.style.paddingTop = Math.max(24, Math.round(H * 0.28 - h / 2)) + 'px';
   }
   function show() { $('app').classList.add('on'); $('wait').style.display = 'none'; }
 
