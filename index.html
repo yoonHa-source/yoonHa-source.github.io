@@ -16,10 +16,10 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="apple-touch-icon.png">
 <script>
-// 앱(Index.html)과 같은 기준으로 첫 바탕색을 정한다: 22시~8시는 검정, 낮은 앱 낮 화면 색
+// 앱(Index.html)과 같은 기준으로 첫 바탕색을 정한다: 21시~8시는 검정, 낮은 앱 낮 화면 색
 // 앱 안의 ☾ 버튼 상태는 구글 쪽 저장소라 여기서 읽을 수 없다 → 앱이 준비되면 알려 주는 값으로 맞춘다
 (function () {
-  var h = new Date().getHours(), night = h >= 22 || h < 8;
+  var h = new Date().getHours(), night = h >= 21 || h < 8;
   var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
   var bg = night ? '#000000' : dark ? '#10141C' : '#F2F4F8';
   document.documentElement.style.background = bg;
